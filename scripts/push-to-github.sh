@@ -5,9 +5,10 @@ REPO_NAME="${1:?Repo name required}"
 DESCRIPTION="${2:-Rugby Manager}"
 DIR="${3:-.}"
 
+GITHUB_OWNER="${GITHUB_OWNER:-Juan-Lucas-Llobeta}"
+
 CRED=$(printf "protocol=https\nhost=github.com\n\n" | git credential fill)
 TOKEN=$(echo "$CRED" | awk -F= '/^password=/{print $2}')
-USER=$(echo "$CRED" | awk -F= '/^username=/{print $2}')
 
 if [ -z "$TOKEN" ]; then
   echo "No GitHub credentials found. Run: gh auth login"
@@ -30,7 +31,7 @@ fi
 
 cd "$DIR"
 if ! git remote get-url origin >/dev/null 2>&1; then
-  git remote add origin "https://github.com/${USER}/${REPO_NAME}.git"
+  git remote add origin "https://github.com/${GITHUB_OWNER}/${REPO_NAME}.git"
 fi
 git push -u origin main
 echo "Pushed ${REPO_NAME} to GitHub"
