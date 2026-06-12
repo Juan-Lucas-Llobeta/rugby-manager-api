@@ -1,0 +1,28 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+node_modules
+
+# Environment files (SENSITIVE - never commit!)
+.env
+.env.local
+.env.*.local
+
+# Keep .env.example as template (safe to commit)
+!.env.example
+
+# Database dumps and backups (may contain sensitive data)
+*.sql.bak
+*.dump
+database/*_dump.sql
+database/*_backup.sql
+certs/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db

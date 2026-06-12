@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify modules load
+        run: node -e "require('./src/middleware/permissions'); require('./src/config/validateEnv'); console.log('OK')"
+
+      - name: Run tests
+        env:
+          JWT_SECRET: test_jwt_secret_with_at_least_32_chars_for_ci
+        run: npm test
+
+      - name: Verify OpenAPI spec is up to date
+        run: |
+          npm run openapi:export
+          git diff --exit-code openapi.json

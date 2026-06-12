@@ -1,0 +1,177 @@
+================================================================================
+RUGBY MANAGER - BACKEND DEVELOPMENT DOCUMENTATION
+================================================================================
+This file contains common errors and best practices for creating entities
+in the Rugby Manager backend.
+
+================================================================================
+PROJECT STRUCTURE (FOR EACH ENTITY)
+================================================================================
+
+For each entity, you need to create:
+
+1. STORED PROCEDURES (backend/database/sp_[entity].sql)
+   - sp_[entity]_get_all
+   - sp_[entity]_get_by_id
+   - sp_[entity]_create
+   - sp_[entity]_update
+   - sp_[entity]_delete
+   - Any custom SPs needed
+
+2. MODEL (backend/src/models/[Entity].js)
+   - Class with entity attributes
+   - Static methods that call SPs via pool.execute('CALL sp_...')
+
+3. SERVICE (backend/src/services/[entity]Service.js)
+   - Business logic
+   - UUID generation
+   - FK validation (optional, SP can do this)
+
+4. CONTROLLER (backend/src/controllers/[entity]Controller.js)
+   - Input validation
+   - HTTP response formatting
+   - Error handling
+
+5. ROUTES (backend/src/routes/[entity]Routes.js)
+   - Route definitions with Swagger JSDoc comments
+   - Connect routes to controller functions
+
+6. UPDATE ROUTE INDEX (backend/src/routes/index.js)
+   - Add: router.use('/[entities]', [entity]Routes);
+
+7. UPDATE SWAGGER (backend/src/config/swagger.js)
+   - Add schemas for the entity
+
+================================================================================
+COMMON ERRORS AND FIXES
+================================================================================
+
+ERROR 1: IF NOT EXISTS (SELECT 1 FROM ...) doesn't work in MySQL SPs
+--------------------------------------------------------------------------
+WRONG:
+    IF NOT EXISTS (SELECT 1 FROM Usuarios WHERE id_usuario = p_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Not found';
+    END IF;
+
+CORRECT:
+    DECLARE v_count INT DEFAULT 0;
+    SELECT COUNT(*) INTO v_count FROM Usuarios WHERE id_usuario = p_id;
+    IF v_count = 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Not found';
+    END IF;
+
+WHY: MySQL's "IF NOT EXISTS (SELECT...)" inside SPs can behave unexpectedly.
+     Using COUNT(*) INTO a variable is reliable.
+
+--------------------------------------------------------------------------
+
+ERROR 2: ROW_COUNT() returns 0 after COMMIT
+--------------------------------------------------------------------------
+WRONG:
+    DELETE FROM Tabla WHERE id = p_id;
+    COMMIT;
+    SELECT ROW_COUNT() AS affected_rows;  -- Returns 0!
+
+CORRECT:
+    DELETE FROM Tabla WHERE id = p_id;
+    COMMIT;
+    SELECT 1 AS affected_rows;  -- If we got here, delete worked
+
+WHY: ROW_COUNT() is reset by COMMIT. Since we already validate existence
+     before delete, if we reach this point the delete succeeded.
+
+--------------------------------------------------------------------------
+
+ERROR 3: Not checking if SP result exists in Node.js
+--------------------------------------------------------------------------
+WRONG (in Model):
+    static async delete(id) {
+        const [rows] = await pool.execute('CALL sp_delete(?)', [id]);
+        return rows[0][0].affected_rows > 0;  // Can throw if undefined
+    }
+
+CORRECT:
+    static async delete(id) {
+        const [rows] = await pool.execute('CALL sp_delete(?)', [id]);
+        const result = rows[0] && rows[0][0];
+        return result && result.affected_rows > 0;
+    }
+
+WHY: The result structure from mysql2 with SPs can vary. Always check
+     that each level exists.
+
+================================================================================
+TRANSACTION ISOLATION LEVELS
+================================================================================
+
+Use these guidelines:
+
+| Scenario                    | Isolation Level  |
+|-----------------------------|------------------|
+| Simple CRUD, single table   | READ COMMITTED   |
+| Multiple related tables     | REPEATABLE READ  |
+| Critical/financial ops      | SERIALIZABLE     |
+
+Default: READ COMMITTED (MySQL default, sufficient for most operations)
+
+Use REPEATABLE READ when:
+- Reading a Partido with its Convocatorias
+- Getting an Entrenamiento with all Asistencias
+- Any operation that must see consistent data across multiple tables
+
+================================================================================
+MySQL RESULT STRUCTURE FROM NODE.js (mysql2)
+================================================================================
+
+When calling a stored procedure:
+    const [rows] = await pool.execute('CALL sp_name(?)', [param]);
+
+The result structure is:
+    rows[0] = First result set (array of row objects)
+    rows[1] = Second result set (if SP returns multiple SELECTs)
+    rows[N] = ResultSetHeader (metadata)
+
+For a single SELECT in the SP:
+    rows[0][0] = First row of results
+    rows[0]    = Array of all rows
+
+================================================================================
+CHECKLIST FOR NEW ENTITY
+================================================================================
+
+[ ] 1. Create SP file: backend/database/sp_[entity].sql
+       - Use sptemplate.sql as reference
+       - Use COUNT(*) INTO for existence checks
+       - Use SELECT 1 AS affected_rows for delete/update success
+       - Run SPs in MySQL
+
+[ ] 2. Create Model: backend/src/models/[Entity].js
+       - Constructor with entity fields
+       - Static methods: findAll, findById, create, update, delete
+       - Handle null checks on result parsing
+
+[ ] 3. Create Service: backend/src/services/[entity]Service.js
+       - Import model and uuid
+       - Implement getAll, getById, create, update, delete
+       - Add any business logic
+
+[ ] 4. Create Controller: backend/src/controllers/[entity]Controller.js
+       - Validate request inputs
+       - Call service methods
+       - Return proper HTTP status codes
+
+[ ] 5. Create Routes: backend/src/routes/[entity]Routes.js
+       - Add Swagger JSDoc comments
+       - Map routes to controller functions
+
+[ ] 6. Update routes/index.js
+       - Import and mount new routes
+
+[ ] 7. Update config/swagger.js
+       - Add entity schemas
+
+[ ] 8. Test via Swagger UI: http://localhost:3001/api-docs
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
